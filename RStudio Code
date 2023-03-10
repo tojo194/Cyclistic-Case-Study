@@ -1,0 +1,146 @@
+---
+title: "Cyclistic Capstone"
+author: "Taylor"
+date: "2023-03-08"
+output: html_document
+---
+
+#Installing necessary packages
+install.packages("tidyverse")
+install.packages("lubridate")
+
+#Loading packages
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(hms)
+setwd("/Users/taylorjohnston/Desktop/Google Capstone/CSV files 2")
+
+#Importing past 12 months of data
+q2_2019 <- read_csv("Divvy_Trips_2019_Q2.csv")
+q3_2019 <- read_csv("Divvy_Trips_2019_Q3.csv")
+q4_2019 <- read_csv("Divvy_Trips_2019_Q4.csv")
+q1_2020 <- read_csv("Divvy_Trips_2020_Q1.csv")
+
+#Checking the column names to see if they are different
+colnames(q2_2019)
+colnames(q3_2019)
+colnames(q4_2019)
+colnames(q1_2020)
+
+#Changing the column names to conform to Q1 2020 as it is the most recent
+q2_2019 <- rename(q2_2019, ride_id = "01 - Rental Details Rental ID", rideable_type = "01 - Rental Details Bike ID", started_at = "01 - Rental Details Local Start Time", ended_at = "01 - Rental Details Local End Time", start_station_name = "03 - Rental Start Station Name", start_station_id = "03 - Rental Start Station ID", end_station_name = "02 - Rental End Station Name", end_station_id = "02 - Rental End Station ID", member_casual = "User Type")
+
+q3_2019 <- rename(q3_2019, ride_id = "trip_id", rideable_type = "bikeid", started_at = "start_time", ended_at = "end_time", start_station_name = "from_station_name", start_station_id = "from_station_id", end_station_name = "to_station_name", end_station_id = "to_station_id", member_casual = "usertype")
+
+q4_2019 <- rename(q4_2019, ride_id = "trip_id", rideable_type = "bikeid", started_at = "start_time", ended_at = "end_time", start_station_name = "from_station_name", start_station_id = "from_station_id", end_station_name = "to_station_name", end_station_id = "to_station_id", member_casual = "usertype")
+
+#Checking the structure of each to make sure the column names were changed
+str(q2_2019)
+str(q3_2019)
+str(q4_2019)
+str(q1_2020)
+
+#Changing ride_id into a character so it matches Q1 2020
+q2_2019 <- mutate(q2_2019, ride_id = as.character(ride_id), rideable_type = as.character(rideable_type))
+q3_2019 <- mutate(q3_2019, ride_id = as.character(ride_id), rideable_type = as.character(rideable_type))
+q4_2019 <- mutate(q4_2019, ride_id = as.character(ride_id), rideable_type = as.character(rideable_type))
+
+#Combining the data together
+all_trips <- bind_rows(q2_2019, q3_2019, q4_2019, q1_2020)
+
+#Dropping any columns that won't be necessary during my analysis
+all_trips <- all_trips %>%
+select(-c(start_lat, start_lng, end_lat, end_lng, birthyear, gender, "01 - Rental Details Duration In Seconds Uncapped", "05 - Member Details Member Birthday Year", "Member Gender", "tripduration"))
+
+#Checking the column names, rows, dimensions, strucute, and summary of all_trips 
+colnames(all_trips)
+nrow(all_trips)
+dim(all_trips)
+head(all_trips)
+str(all_trips)
+summary(all_trips)
+table(all_trips$member_casual)
+
+#Changing the wording of member type so that it is uniform
+all_trips <- all_trips %>%
+mutate(member_casual = recode(member_casual, "Subscriber" = "member", "Customer" = "casual"))
+table(all_trips$member_casual)
+
+#Converting the date and time of trips
+all_trips$date <- as.Date(all_trips$started_at)
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+all_trips$time <- format(as.Date(all_trips$date), "%H:%M:%S")
+all_trips$time <- as_hms((all_trips$started_at))
+all_trips$hour <- hour(all_trips$time)
+
+#Calculating the ride length
+all_trips$ride_length <- difftime(all_trips$ended_at, all_trips$started_at)
+
+str(all_trips)
+
+#Changing ride_length into a numeric instead of a character
+is.factor(all_trips$ride_length)
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+is.numeric(all_trips$ride_length)
+
+#Dropping all rides with negative ride lengths and those taken back to headquarters for quality testing
+all_trips_v2 <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length<0),]
+
+#remove rows with NA and duplicate values
+all_trips_v2 <- na.omit(all_trips_v2) 
+all_trips_v2 <- distinct(all_trips_v2)
+
+#Finding statistics about ride length by members and casuals
+mean(all_trips_v2$ride_length)
+median(all_trips_v2$ride_length)
+max(all_trips_v2$ride_length)
+min(all_trips_v2$ride_length)
+
+summary(all_trips_v2$ride_length)
+
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = mean)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = median)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = max)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = min)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+
+#Ordering the days of the week
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+
+#Creating a bar chart to visualize the average ride length between members and casuals
+all_trips_v2 %>%
+mutate(weekday = wday(started_at,label=TRUE)) %>%
+group_by(member_casual,weekday) %>%
+summarize(number_of_rides = n(),average_duration = mean(ride_length)) %>%
+arrange(member_casual, weekday) %>%
+ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+geom_col(position = "dodge")
+
+#Creating a dataframe to hold the average ride length between members and casuals data and store it into a CSV file for Tableau
+counts <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+write.csv(counts, file = 'C:\\Users\\taylorjohnston\\Desktop\\Google Capstone\\CSV files 2\\avg_ride_length.csv')
+
+#Finding the total number of users who are members and casuals to convert into percentages in Tableau
+percentage_of_users <- aggregate(all_trips_v2$member_casual, by = list(all_trips_v2$member_casual), FUN = length)
+
+#Checking data
+table(all_trips_v2$member_casual)
+
+#Saving file of the total number of users who are members and casuals to convert into percentages in Tableau
+write.csv(percentage_of_users, file = 'C:\\Users\\taylorjohnston\\Desktop\\Google Capstone\\CSV files 2\\percentage_of_users.csv')
+
+#Creating a data frame to analyze ridership between subsriber type by month
+all_trips_month <- all_trips_v2
+
+#remove columns not needed 
+all_trips_month <- all_trips_month %>% 
+  select(-c(start_station_name, end_station_name, time, started_at, ended_at, rideable_type, start_station_id, end_station_id))
+
+#Saving file 
+write.csv(all_trips_month, file = 'C:\\Users\\taylorjohnston\\Desktop\\Google Capstone\\CSV files 2\\all_trips_month.csv')
